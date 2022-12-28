@@ -1,0 +1,282 @@
+---
+title: | 
+    | Assignment 2 - Vote Choice in Germany
+    | Statistical Inference and Modelling - SIM
+    | 1st Semester 2022
+author: "Ander Barrio Campos, Odysseas Kyparissis"
+date: "`r Sys.Date()`"
+geometry: margin=2cm
+fontsize: 12pt
+line-height: 1.5
+output: 
+  pdf_document:
+    includes:
+      in_header: header.tex
+    toc: no
+    number_sections: true
+    fig_width: 6
+    fig_height: 4
+    fig_caption: true
+classoption: a4paper
+editor_options: 
+  chunk_output_type: console
+header-includes:
+- \pagenumbering{gobble}
+---
+
+\newpage
+
+```{=latex}
+\setcounter{tocdepth}{4}
+\tableofcontents
+```
+```{=tex}
+\newpage
+\pagenumbering{arabic}
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Clear plots from the R plots view:
+if(!is.null(dev.list())) dev.off()
+# Clean workspace - No variables at the current workspace
+rm(list=ls())
+# Setting working directory
+setwd("/Users/anderbarriocampos/Desktop/UPC/SIM/Assignment2")
+# Libraries loading
+library(ggplot2)
+library(GGally)
+library(car)
+library(lmtest)
+library(chemometrics)
+library(FactoMineR)
+library(corrplot)
+library(effects)
+library(AER)
+library(MASS)
+install.packages('egg')
+library('egg')
+```
+
+\newpage
+
+# Explanatory Data Analysis - EDA
+
+## Loading Voting Data
+
+In this part of the report, setting up the working environment and loading of the data into R are taking place. Additionally, a first look at the summary of the raw voting choice in Germany data set is taken.
+
+```{r read}
+load("/Users/anderbarriocampos/Desktop/UPC/SIM/Assignment2/gles.RData")
+summary(gles)
+```
+
+## Data Types
+
+To begin with, the types of the raw variables contained into the data set are being checked. It is clear, that the data set consists of 3 numerical variables and 3 categorical ones. The numeric variables are the following: egoposition_immigration, political_interest and income, while the categorical ones are: vote, ostwest and gender. In the following sections, categorical variables will be transformed into labeled factors, as well as, new derived factors will be produced from the numerical values.
+
+```{r rawtypes, include=FALSE}
+typeof(gles$vote)
+typeof(gles$egoposition_immigration)
+typeof(gles$ostwest)
+typeof(gles$political_interest)
+typeof(gles$income)
+typeof(gles$gender)
+```
+
+## Checking for Missing Data
+
+To continue with, a check for missing data is conducted on the raw data set. Considering the summary of the data set presented before, there are no NA values in the variables of the data set. The same conclusion is derived when a check is completed for each individual variable.
+
+```{r missingData, include=FALSE}
+ll <- which( gles$vote=="NA"); length(ll)
+ll <- which( gles$egoposition_immigration=="NA"); length(ll)
+ll <- which( gles$ostwest=="NA"); length(ll)
+ll <- which( gles$political_interest=="NA"); length(ll)
+ll <- which( gles$income=="NA"); length(ll)
+ll <- which( gles$gender=="NA"); length(ll)
+```
+
+## Checking for Duplicates
+
+By checking if there are duplicate rows inside the raw data set, the result indicates that ...
+
+```{r checkingDuplicates}
+dupli <- duplicated(gles)
+dupli_ind <- which(dupli)
+dupli_ind
+length(dupli_ind)
+```
+
+With the following command, a closer look can be taken into the values of the duplicate row.
+
+```{r presentDuplicate}
+gles[dupli_ind,]
+```
+
+To continue with the explanatory data analysis, the duplicate row is removed from the raw data set.
+
+```{r removeDuplicate, include=FALSE}
+#gles[-dupli_ind,]
+#any(duplicated(gles))
+```
+
+## Creating Factors for Qualitative Variables
+
+In this subsection of EDA, all qualitative variables are transformed into labeled factors. The qualitative variables, as mentioned before, are vote, ostwest and gender First of all, the unique values of these 3 variables are presented below:
+
+```{r uniqueValeusOfQualitative}
+unique(gles$vote)
+unique(gles$ostwest)
+unique(gles$gender)
+```
+
+The next step includes the creation of the labeled factors based on the unique values of the categorical variables. Following the practice below, in case a categorical variable includes NA values, they will be transformed into zeros, which is an incorrect approach. In this case, once missing values check indicated that there are no missing data, proceeding with this practice does not result in erroneous data.
+
+```{r voteToFactor, echo=FALSE}
+gles$f.party<-0 #center
+gles$f.party[gles$vote=="Gruene" | gles$vote=="LINKE"]<-1 #left
+gles$f.party[gles$vote=="AfD"]<-2 #right
+gles$f.party<-factor(gles$f.party,labels=c("CENTER","LEFT","RIGHT"))
+```
+
+```{r ostwestToFactor, echo=FALSE}
+gles$f.ostwest<-0; gles$f.ostwest[gles$ostwest=="1"]<-1
+gles$f.ostwest<-factor(gles$f.ostwest, labels=c("NG","EG")) #northen and east germany
+```
+
+```{r genderToFactor, echo=FALSE}
+gles$f.gender<-0; gles$f.gender[gles$gender=="0"]<-1
+gles$f.gender<-factor(gles$f.gender, labels=c("F","M"))
+```
+
+## Factor Conversion Check
+
+After checking both manually and by executing commands on the terminal, the conversion of the categorical and numerical variables to factors has been completed correctly. In addition, while the categorical variables vote, ostwest and gender have been transformed into labeled factors, their old versions are discarded from the data frame. Below is presented the new structure of the data frame.
+
+```{r removingCHRVariables, echo=FALSE}
+gles$vote <- NULL #delete vote and work now with f.party
+gles$ostwest <- NULL #delete ostwest
+gles$gender <- NULL #delete gender
+```
+
+```{r dfStr}
+str(gles)
+```
+
+## Outliers Detection
+
+```{r calcQFunction, echo=FALSE}
+calcQ <- function(x) {
+  s.x <- summary(x)
+  iqr<-s.x[5]-s.x[2]
+  list(souti=s.x[2]-3*iqr, mouti=s.x[2]-1.5*iqr, min=s.x[1], q1=s.x[2], q2=s.x[3], 
+       q3=s.x[5], max=s.x[6], mouts=s.x[5]+1.5*iqr, souts=s.x[5]+3*iqr ) }
+```
+
+In the following subsections both uni-variate and multivariate outliers will be detected and treated.
+
+### Univariate Outliers
+
+To start with, in the following subsection the uni-variate outliers will be detected for the numerical variables: egoposition_immigration, political_interest and income with the respective order. It is crucial to mention here, that only severe outliers were taken into account and not mild ones. Now, concerning variable age, as it is depicted in the boxplot of the variable, outliers do not exist. The same result is derived after trying to detect outliers using the IQR method, which is implemented by function calcQ.
+
+```{r uniOutEgoBoxPlot, message=FALSE, echo=FALSE, fig.height=3, fig.width=6}
+boxplot(gles$egoposition_immigration, main = "Boxplot of Variable Egoposition Inmigration")
+```
+
+```{r uniOutEgoIQR, message=FALSE, echo=FALSE}
+var_out<-calcQ(gles$egoposition_immigration)
+llout_ego<-which((gles$egoposition_immigration<var_out$souti)|(gles$egoposition_immigration>var_out$souts))
+length(llout_ego)
+```
+
+Following by, the same approach is used for variable political_interest.
+
+```{r uniOutPoliBoxPlot, message=FALSE, echo=FALSE,fig.height=3, fig.width=6}
+boxplot(gles$political_interest, main = "Boxplot of Variable Political Interest")
+var_out<-calcQ(gles$political_interest)
+abline(h=var_out$souts,col="red")
+abline(h=var_out$souti,col="red")
+abline(h=var_out$mouts,col="red")
+llout_political<-which((gles$political_interest<var_out$souti)|(gles$political_interest>var_out$souts))
+length(llout_political)
+```
+
+The results are the same, there are no severe outliers for variable political_interest as well. Finally, the outlier detection for the income is taking place.
+
+```{r uniOutIncome, echo=FALSE, fig.height=3, fig.width=6}
+boxplot(gles$income, main = "Boxplot of Variable Income")
+var_out<-calcQ(gles$income)
+llout_income<-which((gles$income<var_out$souti)|(gles$income>var_out$souts))
+length(llout_income)
+```
+
+In this case, there are ... extreme outliers for the income variable, which are presented below.
+
+```{r incomeOutliers}
+df[llout_income,]
+```
+
+
+# Univariate Descriptove Analysis - UDA
+
+### Descriptive Analysis for Numerical Variables
+```{r quantitativeData}
+quantiData = gles[gles$egoposition_immigration, gles$political_interest, gles$income ]
+quantiData
+```
+
+### Standard Deviation
+```{r standardDeviation}
+lapply(quantiData, sd)
+```
+
+### Histograms
+```{r histograms}
+summary(gles$egoposition_immigration)
+hEgo <- ggplot(gles, aes(x=gles$egoposition_immigration)) + 
+  geom_histogram(color="darkred", fill="pink")
+
+summary(gles$political_interest)
+hPoli <-ggplot(gles, aes(x=gles$political_interest)) + 
+  geom_histogram(color="darkblue", fill="lightblue")
+
+summary(gles$income)
+hIncome <- ggplot(gles, aes(x=gles$income)) + 
+  geom_histogram(color="darkgreen", fill="lightgreen")
+
+ggarrange(hEgo, hPoli, hIncome, 
+          ncol = 1, nrow = )
+```
+
+### Boxplots
+```{r boxplots}
+boxplot(gles$egoposition_immigration, gles$political_interest, gles$income,
+        las ="2",names = c("Egoposition Immigration","Political Interest","Income"))
+```
+
+### Descriptive Analysis for Categorial Variables
+```{r qualitativeData}
+qualiData = gles[gles$f.party, gles$f.ostwest, gles$f.gender ]
+qualiData
+```
+
+### Pie Charts
+```{r pieCharts}
+par(mfrow=c(1,3))
+
+wings = table(gles$f.party)
+pie(wings,  main= "Wing", labels = paste(round(prop.table(wings)*100), "%", sep = ""), col = rainbow(length(wings))) 
+legend("topright", c("CENTER","LEFT","RIGHT"), cex = 0.8,
+       fill = rainbow(length(wings)))
+
+ostwest = table(gles$f.ostwest)
+pie(ostwest,  main= "Ostwest", labels = paste(round(prop.table(ostwest)*100), "%", sep = ""), col = rainbow(length(ostwest))) 
+legend("topright", c("NG","EG"), cex = 0.8,
+       fill = rainbow(length(ostwest)))
+
+gender = table(gles$f.gender)
+pie(gender,  main= "Gender", labels = paste(round(prop.table(gender)*100), "%", sep = ""), col = rainbow(length(gender))) 
+legend("topright", c("F","M"), cex = 0.8,
+       fill = rainbow(length(gender)))
+```
