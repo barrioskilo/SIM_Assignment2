@@ -39,10 +39,16 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Clear plots from the R plots view:
 if(!is.null(dev.list())) dev.off()
+
 # Clean workspace - No variables at the current workspace
 rm(list=ls())
+
 # Setting working directory
-setwd("/Users/anderbarriocampos/Desktop/UPC/SIM/Assignment2")
+setwd("C:/Users/odyky/Desktop/SIM_Assignment2")
+# setwd("/Users/anderbarriocampos/Desktop/UPC/SIM/Assignment2")
+
+options(contrasts=c("contr.treatment","contr.treatment")) #Baseline category reparametrization
+
 # Libraries loading
 library(ggplot2)
 library(GGally)
@@ -54,8 +60,7 @@ library(corrplot)
 library(effects)
 library(AER)
 library(MASS)
-install.packages('egg')
-library('egg')
+library(egg)
 ```
 
 \newpage
@@ -67,13 +72,13 @@ library('egg')
 In this part of the report, setting up the working environment and loading of the data into R are taking place. Additionally, a first look at the summary of the raw voting choice in Germany data set is taken.
 
 ```{r read}
-load("/Users/anderbarriocampos/Desktop/UPC/SIM/Assignment2/gles.RData")
+load("gles.RData")
 summary(gles)
 ```
 
 ## Data Types
 
-To begin with, the types of the raw variables contained into the data set are being checked. It is clear, that the data set consists of 3 numerical variables and 3 categorical ones. The numeric variables are the following: egoposition_immigration, political_interest and income, while the categorical ones are: vote, ostwest and gender. In the following sections, categorical variables will be transformed into labeled factors, as well as, new derived factors will be produced from the numerical values.
+To begin with, the types of the raw variables contained into the data set are being checked. It is clear, that the raw data set consists of 5 numerical variables and 1 categorical. On the one hand, based on the raw data types, the numeric variables are the following: *egoposition_immigration*, *ostwest*, *political_interest*, *income* and *gender*, while the categorical one is variable *vote*. On the other hand, if page 3 of the assignment statement (subsection *Variables*) is taken into account, all of the numerical variables correspond to qualitative concepts. In more detail, variables *egoposition_immigration, political_interest* and *income* (*income-satisfaction)* correspond to ordered factors, while *ostwest* and *gender* variables are binary ones.In the following sections, all the numerical variables will be transformed into labeled factors (ordered or not). From our point of view, using those variables as numerical does not make sense, but in order to cover all the points of the assignment, some extra analysis (containing the numerical versions) will take place in the Appendix.
 
 ```{r rawtypes, include=FALSE}
 typeof(gles$vote)
@@ -99,70 +104,198 @@ ll <- which( gles$gender=="NA"); length(ll)
 
 ## Checking for Duplicates
 
-By checking if there are duplicate rows inside the raw data set, the result indicates that ...
+By checking if there are duplicate rows inside the raw data set, the result indicates that a total number of 359 occurrences of duplicates exist.
 
 ```{r checkingDuplicates}
-dupli <- duplicated(gles)
-dupli_ind <- which(dupli)
-dupli_ind
-length(dupli_ind)
+dupli <- duplicated(gles); dupli_ind <- which(dupli); length(dupli_ind)
 ```
 
-With the following command, a closer look can be taken into the values of the duplicate row.
+With the following command, a closer look can be taken into the values of the first 5 duplicate rows (for space saving reasons).
 
 ```{r presentDuplicate}
-gles[dupli_ind,]
+gles[dupli_ind,][1:5,]
 ```
 
-To continue with the explanatory data analysis, the duplicate row is removed from the raw data set.
+By taking a closer look at the duplicates, one can understand that, it is logical people with the same characteristics to vote for the same party during the elections. For that reason, the duplicates are not removed or treated, but a new factor will be created in the dataset indicating if a row is a duplicate or not.
 
-```{r removeDuplicate, include=FALSE}
-#gles[-dupli_ind,]
-#any(duplicated(gles))
+```{r createDuplicateFactor, include=FALSE}
+gles$f.duplicate<-0; gles$f.duplicate[dupli_ind]<-1
+gles$f.duplicate<-factor(gles$f.duplicate,labels=c("No.Duplicate","Yes.Duplicate"))
 ```
 
 ## Creating Factors for Qualitative Variables
 
-In this subsection of EDA, all qualitative variables are transformed into labeled factors. The qualitative variables, as mentioned before, are vote, ostwest and gender First of all, the unique values of these 3 variables are presented below:
+In this subsection of EDA, all qualitative variables are transformed into labeled factors (nominal, ordinal and binary). All variables of the raw data set, as mentioned before, correspond to categorical ones. First of all, their unique values are presented below:
 
-```{r uniqueValeusOfQualitative}
-unique(gles$vote)
-unique(gles$ostwest)
-unique(gles$gender)
+```{r uniqueValeusOfVariables}
+unique(gles$vote); unique(gles$egoposition_immigration); unique(gles$ostwest)
+unique(gles$political_interest); unique(gles$income); unique(gles$gender)
 ```
 
 The next step includes the creation of the labeled factors based on the unique values of the categorical variables. Following the practice below, in case a categorical variable includes NA values, they will be transformed into zeros, which is an incorrect approach. In this case, once missing values check indicated that there are no missing data, proceeding with this practice does not result in erroneous data.
 
-```{r voteToFactor, echo=FALSE}
-gles$f.party<-0 #center
-gles$f.party[gles$vote=="Gruene" | gles$vote=="LINKE"]<-1 #left
-gles$f.party[gles$vote=="AfD"]<-2 #right
-gles$f.party<-factor(gles$f.party,labels=c("CENTER","LEFT","RIGHT"))
-```
+Additionally, it is crucial to mention here that the following variables were transformed into ordered factors: *income, political_interest* and *egoposition_immigration.* Moreover *gender, vote* and *ostwest* variables were transformed to nominal factors and finally a new nominal factor was generated, named *political_orientation.* This new variable discretize the 6 German parties into three political wings with labels *Left_Wing, Center_Wing* and *Right_Wing* respectively. In order to accomplish this discretization, page 3 of the assignment statement (subsection *Variables -* indicating the character of each political party: left, center, right) was taken into account one more time.
 
 ```{r ostwestToFactor, echo=FALSE}
-gles$f.ostwest<-0; gles$f.ostwest[gles$ostwest=="1"]<-1
-gles$f.ostwest<-factor(gles$f.ostwest, labels=c("NG","EG")) #northen and east germany
+gles$f.eastGermany<-0; gles$f.eastGermany[gles$ostwest=="1"]<-1
+gles$f.eastGermany<-factor(gles$f.eastGermany,
+                           labels=c("No.EastGermany","Yes.EastGermany"))
 ```
 
 ```{r genderToFactor, echo=FALSE}
-gles$f.gender<-0; gles$f.gender[gles$gender=="0"]<-1
-gles$f.gender<-factor(gles$f.gender, labels=c("F","M"))
+gles$f.gender<-0; gles$f.gender[gles$gender=="1"]<-1
+gles$f.gender<-factor(gles$f.gender, labels=c("M","F"))
+```
+
+```{r incomeToOrderedFactor, echo=FALSE}
+gles$f.income <- ordered(gles$income, levels=c(0, 1, 2, 3, 4),
+                         labels=c("Low.Sat", "Low_to_Medium.Sat",
+                                  "Medium.Sat", "Medium_to_High.Sat",
+                                  "High.Sat"))
+```
+
+```{r politicalInterestToOrderedFactor, echo=FALSE}
+gles$f.political_interest <- ordered(gles$political_interest,
+                                     levels=c(0, 1, 2, 3, 4),
+                                     labels=c("Low.Inter",
+                                              "Low_to_Medium.Inter",
+                                              "Medium.Inter",
+                                              "Medium_to_High.Inter",
+                                              "High.Inter"))
+```
+
+```{r egoPositionToOrderedFactor, echo=FALSE}
+gles$f.egoposition_immigration <- ordered(gles$egoposition_immigration,
+                                     levels=c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+                                     labels=c("0_Very_Open_Level.Imm",
+                                              "1_Level.Imm",
+                                              "2_Level.Imm",
+                                              "3_Level.Imm",
+                                              "4_Level.Imm",
+                                              "5_Neutral_Level.Imm",
+                                              "6_Level.Imm",
+                                              "7_Level.Imm",
+                                              "8_Level.Imm",
+                                              "9_Level.Imm",
+                                              "10_Very_Restrictive_Level.Imm"))
+```
+
+```{r voteToFactor, echo=FALSE}
+gles$f.vote<-as.factor(gles$vote)
+```
+
+```{r voteToPoliticalOrientationFactor, echo=FALSE}
+gles$f.political_orientation<-0 #center
+gles$f.political_orientation[gles$vote=="Gruene" | gles$vote=="LINKE"]<-1 #left
+gles$f.political_orientation[gles$vote=="AfD"]<-2 #right
+gles$f.political_orientation<-factor(gles$f.political_orientation,
+                                     labels=c("Center_Wing","Left_Wing",
+                                              "Right_Wing"))
 ```
 
 ## Factor Conversion Check
 
-After checking both manually and by executing commands on the terminal, the conversion of the categorical and numerical variables to factors has been completed correctly. In addition, while the categorical variables vote, ostwest and gender have been transformed into labeled factors, their old versions are discarded from the data frame. Below is presented the new structure of the data frame.
+After checking both manually and by executing commands on the terminal, the conversion of the categorical and numerical variables to factors has been completed correctly. In addition, while the categorical variables *vote*, *ostwest* and *gender* have been transformed into labeled factors, their old versions are discarded from the data frame (in those cases it is sure that their numerical representation does not provide any extra information). The remaining variables were not discarded in order to check if better results could be obtained by using their numerical representation in higher powers (poly function). Below the new structure of the data frame is presented.
 
 ```{r removingCHRVariables, echo=FALSE}
-gles$vote <- NULL #delete vote and work now with f.party
+gles$vote <- NULL #delete vote
 gles$ostwest <- NULL #delete ostwest
 gles$gender <- NULL #delete gender
 ```
 
-```{r dfStr}
-str(gles)
+```{r glesSumm}
+summary(gles)
 ```
+
+## Univariate Descriptive Analysis - UDA
+
+As it is stated in the assignment's statement, but as it was concluded in the previous subsection, data set is unbalanced and it contains individuals who mostly vote for parties belonging in the center wing of politics, followed by left wing and finally left wing respectively. The differences between the numbers of each wing are significant. More details are presented below.
+
+### Descriptive Analysis for Numerical Variables
+
+In this subsection, summary statistics, the standard deviation and histograms are presented for the numerical representation of the variables *egoposition_immigration*, *political_interest* and *income*.
+
+```{r quantitativeData, echo=FALSE}
+quantiData = gles[c('egoposition_immigration', 'political_interest', 'income')]
+#quantiData
+```
+
+### Standard Deviation
+
+```{r standardDeviation}
+lapply(quantiData, sd)
+```
+
+```{r summaries}
+summary(gles$egoposition_immigration)
+summary(gles$political_interest)
+summary(gles$income)
+```
+
+```{r histogramms, echo=FALSE, message=FALSE, warning = F}
+
+hEgo <- ggplot(gles, aes(x=egoposition_immigration)) + 
+  geom_histogram(color="black", fill="#00AFBB")
+
+
+hPoli <-ggplot(gles, aes(x=political_interest)) + 
+  geom_histogram(color="black", fill="#00AFBB")
+
+hIncome <- ggplot(gles, aes(x=income)) + 
+  geom_histogram(color="black", fill="#00AFBB")
+
+ggarrange(hEgo, hPoli, hIncome, 
+          ncol = 1, nrow = 3)
+```
+
+From the histograms, it is clear that those 1000 German citizens show interest in the political elections since most of the observations belong to categories *Medium* to *High.* The same is true for variable *income* which depicts the satisfaction of the citizens with their income. Concerning variable *egoposition_immigration* it can be seen that the plot is close to follow a normal distribution with a slight right skewness. This means that most of the citizens in the data set are *Neutral* concerning immigration while the rest of them are scattered through the rest of the variable levels, with a small trend to follow more open ideas for immigration issues.
+
+In addition, the calculation of Spearman correlation is presented for the numerical variables. In the following graph, it is clear that there is not strong correlation between the numerical representation of the variables *egoposition_immigration, political_interest* and *income*. By checking the correlation matrix the values are extremely low.
+
+```{r corrPlot, echo=FALSE}
+M <- cor(gles[,c(1:3)],method="spearman");M #Non Parametric version
+corrplot(M, method="circle")
+```
+
+### Descriptive Analysis for Categorial Variables
+
+Moreover, bar plots are generated illustrating the content of the variables *ostwest*, *gender* and target variables *vote* and *political_orientation (*new derived factor containing *left*, *center* and *right* wings).
+
+### Bar Plots
+
+```{r barPlots, echo=FALSE, message=FALSE, warning = F}
+gg_east <- ggplot(gles, aes(x = f.eastGermany)) + 
+  geom_bar(fill = "#00AFBB", 
+           color="black") +
+  labs(x = "People Living in East Germany", 
+       y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust=1))
+
+gg_gender <- ggplot(gles, aes(x = f.gender)) + 
+  geom_bar(fill = "#00AFBB", 
+           color="black") +
+  labs(x = "Gender of Individuals", 
+       y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust=1))
+
+gg_political_or <- ggplot(gles, aes(x = f.political_orientation)) + 
+  geom_bar(fill = "#00AFBB", 
+           color="black") +
+  labs(x = "Political Orientation (New Vote Variable)", 
+       y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust=1))
+
+gg_vote <- ggplot(gles, aes(x = f.vote)) + 
+  geom_bar(fill = "#00AFBB", 
+           color="black") +
+  labs(x = "Votes", 
+       y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust=1))
+
+ggarrange(gg_east, gg_gender, gg_political_or, gg_vote, ncol = 2, nrow = 2)
+```
+
+From the barplots, it is illustrated that most of the observations are from citizens of the Eastern Gemany, while the gender of them are balanced. In addition, there is a huge difference in the numbers of citizens voting for parties in the *center political wing* while a smaller number of them vote for the *left wing* and finally the *right* one. Finally, party wise, the one with the most votes is party *CDU/CSU,* followed by *SPD* with a small difference. At the same time Gruene, LINKE and FDP are pretty close with each other, but with approximately half of the votes of *CDU/CSU* and *SPD.*
 
 ## Outliers Detection
 
@@ -176,9 +309,9 @@ calcQ <- function(x) {
 
 In the following subsections both uni-variate and multivariate outliers will be detected and treated.
 
-### Univariate Outliers
+### Uni-variate Outliers
 
-To start with, in the following subsection the uni-variate outliers will be detected for the numerical variables: egoposition_immigration, political_interest and income with the respective order. It is crucial to mention here, that only severe outliers were taken into account and not mild ones. Now, concerning variable age, as it is depicted in the boxplot of the variable, outliers do not exist. The same result is derived after trying to detect outliers using the IQR method, which is implemented by function calcQ.
+To start with, in the following subsection the uni-variate outliers will be detected for the numerical variables: *egoposition_immigration*, *political_interest* and *income* with the respective order. It is crucial to mention here, that only severe outliers were taken into account and not mild ones. Now, concerning variable *egoposition_immigration*, as it is depicted in the boxplot of the variable, outliers do not exist. The same result is derived after trying to detect outliers using the IQR method, which is implemented by function calcQ.
 
 ```{r uniOutEgoBoxPlot, message=FALSE, echo=FALSE, fig.height=3, fig.width=6}
 boxplot(gles$egoposition_immigration, main = "Boxplot of Variable Egoposition Inmigration")
@@ -190,104 +323,110 @@ llout_ego<-which((gles$egoposition_immigration<var_out$souti)|(gles$egoposition_
 length(llout_ego)
 ```
 
-Following by, the same approach is used for variable political_interest.
+Following by, the same approach is used for variable *political_interest*.
 
 ```{r uniOutPoliBoxPlot, message=FALSE, echo=FALSE,fig.height=3, fig.width=6}
 boxplot(gles$political_interest, main = "Boxplot of Variable Political Interest")
 var_out<-calcQ(gles$political_interest)
-abline(h=var_out$souts,col="red")
-abline(h=var_out$souti,col="red")
-abline(h=var_out$mouts,col="red")
 llout_political<-which((gles$political_interest<var_out$souti)|(gles$political_interest>var_out$souts))
 length(llout_political)
 ```
 
-The results are the same, there are no severe outliers for variable political_interest as well. Finally, the outlier detection for the income is taking place.
+The results are the same, there are no severe outliers for variable *political_interest* as well. Finally, the outlier detection for the income is taking place.
 
 ```{r uniOutIncome, echo=FALSE, fig.height=3, fig.width=6}
 boxplot(gles$income, main = "Boxplot of Variable Income")
 var_out<-calcQ(gles$income)
+abline(h=var_out$souts,col="red")
+abline(h=var_out$souti,col="red")
+abline(h=var_out$mouts,col="red")
 llout_income<-which((gles$income<var_out$souti)|(gles$income>var_out$souts))
 length(llout_income)
 ```
 
-In this case, there are ... extreme outliers for the income variable, which are presented below.
+In this case, there are extreme outliers for the income variable, which are presented below (only first 10 rows out of 418 in total).
 
 ```{r incomeOutliers}
-df[llout_income,]
+gles[llout_income,][1:10,]
+table(gles$income)
 ```
 
+Additionally, by taking a look at the figure and the table of occurrences for factor variable *income*, it is clear that by using the IQR method in this case, all categories except *Medium_to_High.Sat (level 3)* are considered outliers (13+28+188+189 = 418). For that reason, a new column is generated to indicate the uni-variate outliers for *income.* For now, those outliers are kept into the data set, and in the subsections below, it will be decided if it is necessary to be removed.
 
-# Univariate Descriptove Analysis - UDA
-
-### Descriptive Analysis for Numerical Variables
-```{r quantitativeData}
-quantiData = gles[gles$egoposition_immigration, gles$political_interest, gles$income ]
-quantiData
+```{r incomeOutliersFactor, echo=FALSE}
+gles$f.incomeOutliers<-0;
+gles$f.incomeOutliers[gles$f.income!="Medium_to_High.Sat"]<-1
+gles$f.incomeOutliers<-factor(gles$f.incomeOutliers,
+                           labels=c("No.IncomeOutlier","Yes.IncomeOutlier"))
 ```
 
-### Standard Deviation
-```{r standardDeviation}
-lapply(quantiData, sd)
+### Multivariate Outliers
+
+In this subsection, an attempt for the detection of multivariate outliers took place. To start with, the calculation of the Mahalanobis distance is possible only for numerical variables. At this point, at first, an attempt to calculate the Mahalanobis distance for the numerical representation of *egoposition_immigration*, *political_interest* and *income* with a confidence interval of 95% was followed. Due to the fact that those variables create a singular matrix for the calculation of the Mahalanobis distance, its inverse matrix cannot be calculated and in that way an error is thrown. Additionally, an attempt was completed to calculate the distance for all the variables in their raw format (all variables at numerical representation), but the same problem occurred again. The Classical and Robust Mahalanobis distances could be only calculated for the combination of *egoposition_immigration* and *political_interest* variables of the data set. The results are presented in the following figure:
+
+```{r mOutMaha, echo=FALSE}
+#res.mout <- Moutlier(gles[,c(1:3)]) # Throws error -- We tried to calculate it by combining as well the numerical variables we deleted in chunq "removingCHRVariables" but the same problem happened.
+res.mout <- Moutlier(gles[,c(1:2)], quantile = 0.95)
 ```
 
-### Histograms
-```{r histograms}
-summary(gles$egoposition_immigration)
-hEgo <- ggplot(gles, aes(x=gles$egoposition_immigration)) + 
-  geom_histogram(color="darkred", fill="pink")
+After calculating Mahalanobis distance at a 95% confidence interval, the cut off given is 2.447747.
 
-summary(gles$political_interest)
-hPoli <-ggplot(gles, aes(x=gles$political_interest)) + 
-  geom_histogram(color="darkblue", fill="lightblue")
-
-summary(gles$income)
-hIncome <- ggplot(gles, aes(x=gles$income)) + 
-  geom_histogram(color="darkgreen", fill="lightgreen")
-
-ggarrange(hEgo, hPoli, hIncome, 
-          ncol = 1, nrow = )
+```{r mOutCutOff, include=FALSE}
+res.mout$cutoff
 ```
 
-### Boxplots
-```{r boxplots}
-boxplot(gles$egoposition_immigration, gles$political_interest, gles$income,
-        las ="2",names = c("Egoposition Immigration","Political Interest","Income"))
+Then, all the observations which have a classical and a robust distance bigger than this cut off are marked as multivariate outliers (in this case the term *multivariate* refers only to *egoposition_immigration* and *political_interest* variables). After detecting them, a new factor (*f.mout*) is being created in the data set, indicating if an observation belongs to multivariate outliers or not. It can be seen in the final result that 24 observations are marked as multivariate outliers. Further analysis about them will be conducted in the following sections.
+
+```{r mOutPlot, echo=FALSE}
+par(mfrow=c(1,1))
+plot( res.mout$md, res.mout$rd )
+text(res.mout$md, res.mout$rd, labels=rownames(df),adj=1, cex=0.5)
+abline( h=res.mout$cutoff, lwd=2, col="red")
+abline( v=res.mout$cutoff, lwd=2, col="red")
 ```
 
-### Descriptive Analysis for Categorial Variables
-```{r qualitativeData}
-qualiData = gles[gles$f.party, gles$f.ostwest, gles$f.gender ]
-qualiData
+```{r detectMout, echo=FALSE}
+llmout <- which((res.mout$md > res.mout$cutoff) 
+                 & (res.mout$rd > res.mout$cutoff))
+gles$f.mout <- 0
+gles$f.mout[llmout] <- 1
+gles$f.mout <- factor( gles$f.mout, labels = c("MvOut.No","MvOut.Yes"))
 ```
 
-### Pie Charts
-```{r pieCharts}
-par(mfrow=c(1,3))
-
-wings = table(gles$f.party)
-pie(wings,  main= "Wing", labels = paste(round(prop.table(wings)*100), "%", sep = ""), col = rainbow(length(wings))) 
-legend("topright", c("CENTER","LEFT","RIGHT"), cex = 0.8,
-       fill = rainbow(length(wings)))
-
-ostwest = table(gles$f.ostwest)
-pie(ostwest,  main= "Ostwest", labels = paste(round(prop.table(ostwest)*100), "%", sep = ""), col = rainbow(length(ostwest))) 
-legend("topright", c("NG","EG"), cex = 0.8,
-       fill = rainbow(length(ostwest)))
-
-gender = table(gles$f.gender)
-pie(gender,  main= "Gender", labels = paste(round(prop.table(gender)*100), "%", sep = ""), col = rainbow(length(gender))) 
-legend("topright", c("F","M"), cex = 0.8,
-       fill = rainbow(length(gender)))
+```{r summaryMout, echo=FALSE}
+summary(gles["f.mout"])
 ```
 
+## Profiling of Target Variable(s)
 
+The goal of this chapter is to discover the relationships between the explanatory variables of the data set and the target variable(s). In order to do so the calculation and presentation of interactions between the target and explanatory variables by using the library FactoMineR and Boxplots is completed.
 
+Moreover, with the usage of the library FactoMineR and specifically the function catdes, which calculate the dependencies of a categorical variable, it is able to check the dependencies of the target variable(s) with the explanatory variables of the data set. At first, the dependency between the target variable *f.vote* and the rest of the variables will take place, followed by the same analysis for the new derived target variable *f.political_orientation*. Profiling is completed only by using the factor representation of the explanatory variables and the results are presented in the Appendix at the same subsection.
 
+The main conclusions derived from profiling the target variables are presented here:
 
+-   1
 
+-   2
 
+-   3
 
+-   4
 
+-   
 
+# Polytomous Modelling
 
+# Appendix
+
+## Profiling of Target Variable(s)
+
+```{r catdesF.Vote, include=FALSE}
+res.cat<-catdes(gles, 10) #11 for new factor
+res.cat$category
+```
+
+```{r catdesF.political_orientation, include=FALSE}
+res.cat<-catdes(gles, 11) #11 for new factor
+res.cat$category
+```
